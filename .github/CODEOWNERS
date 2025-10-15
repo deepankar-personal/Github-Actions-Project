@@ -1,0 +1,8 @@
+# All workflow files require approval from reviewer-team
+.github/workflows/*  @deepankar-personal/reviewer-team
+
+# Protect deployment scripts
+scripts/deploy.sh    @deepankar-personal/reviewer-team
+
+# Entire repo owned by reviewer-team
+*                    @deepankar-personal/reviewer-team
