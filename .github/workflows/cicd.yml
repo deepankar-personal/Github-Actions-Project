@@ -80,7 +80,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: app-jar
-          path: app  # this will download JAR to ./app folder
+          path: app  # Download JAR to ./app folder
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -108,39 +108,70 @@ jobs:
             ghcr.io/${{ env.OWNER }}/bankapp:${{ github.sha }}
           file: ./Dockerfile
 
-  deploy_to_kubernetes:
+  # ✅ Optional: Deploy first to staging before production
+  deploy_to_staging:
     runs-on: ubuntu-latest
     needs: builds_docker_image_and_push
     environment:
-      name: production     # 👈 This triggers the approval step configured in GitHub Environments
-      url: https://your-production-url.com  # Optional: shows up in GitHub Actions UI
+      name: staging
+      url: https://staging-bankapp.example.com  # optional
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group rg-product-catalog \
+            --name aks-product-catalog \
+            --overwrite-existing \
+            --admin
+      - name: Deploy to Staging AKS
+        run: |
+          echo "Deploying to Staging..."
+          kubectl apply -f ds.yml --validate=false
+          kubectl rollout status deployment/bankapp-deployment --timeout=120s || true
 
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+  # 🚦 Requires manual approval before running
+  deploy_to_production:
+    runs-on: ubuntu-latest
+    needs: deploy_to_staging
+    environment:
+      name: production   # 👈 Approval will be triggered here!
+      url: https://bankapp.example.com  # optional
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: latest
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Get AKS credentials
-      run: |
-        az aks get-credentials \
-          --resource-group rg-product-catalog \
-          --name aks-product-catalog \
-          --overwrite-existing \
-          --admin
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: latest
 
-    - name: Skip Cluster Validation
-      run: echo "Skipping cluster validation for now."
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group rg-product-catalog \
+            --name aks-product-catalog \
+            --overwrite-existing \
+            --admin
 
-    - name: Deploy to AKS
-      run: |
-        echo "Deploying application..."
-        kubectl apply -f ds.yml --validate=false
-        kubectl rollout status deployment/bankapp-deployment --timeout=120s || true
+      - name: Deploy to Production AKS
+        run: |
+          echo "Deploying to Production..."
+          kubectl apply -f ds.yml --validate=false
+          kubectl rollout status deployment/bankapp-deployment --timeout=120s || true
+
+
